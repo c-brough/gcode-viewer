@@ -61,6 +61,9 @@
   .toolItem .tname{font-weight:600;}
   .toolItem .tmeta{color:var(--dim); font-size:11px;}
   .partOps{padding-left:10px; background:rgba(0,0,0,.15); display:none;}
+  .partHeader.stacked{background:rgba(255,107,107,.08); border-left:3px solid #ff6b6b;}
+  .partHeader.stacked:hover{background:rgba(255,107,107,.15);}
+  .partHeader.stacked.active{background:rgba(255,107,107,.2);}
   .opItem .tname{font-size:11.5px;}
   .hidden{display:none !important;}
   .auditItem{position:relative; margin:8px 10px; padding:10px 12px; border-radius:6px; cursor:pointer; font-size:12px;
@@ -159,6 +162,8 @@
     <div class="infoBlock" id="statsBlock"></div>
     <div class="panelHeader" id="secondaryHeader">Tool changes</div>
     <div id="toolListEl"></div>
+    <div class="panelHeader" id="labelHeader" style="display:none;">Nesting labels</div>
+    <div id="labelSectionEl" style="display:none; padding:10px 12px;"></div>
     <div class="panelHeader" id="auditHeader" style="display:none;">Corner &amp; compensation audit</div>
     <div class="infoBlock" id="auditSummary" style="display:none;"></div>
     <div id="auditControlsRow" class="hidden">
@@ -376,6 +381,37 @@ function partBBox(part){
   const xs = part.points.map(p=>p.x), ys = part.points.map(p=>p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   return { minX, maxX, minY, maxY, width: maxX-minX, height: maxY-minY };
+}
+
+// Flags parts that occupy essentially the SAME footprint — i.e. the overlap
+// covers nearly all of BOTH parts' bounding-box area, not just a shared edge
+// or a fraction of one part. This is meant to catch true duplicate/stacked
+// placements (two parts nested directly on top of each other), not normal
+// edge-to-edge nesting where parts merely touch or partially overlap.
+// Returns { partId: [otherPart, ...] }.
+function computeStackedPartInfo(program){
+  const parts = program.parts || [];
+  const bboxes = parts.map(p=>partBBox(p));
+  const overlapsOf = {};
+  const IDENTICAL_OVERLAP_THRESHOLD = 0.95; // fraction of EACH part's area that must be covered
+  for(let i=0;i<parts.length;i++){
+    for(let j=i+1;j<parts.length;j++){
+      const a = bboxes[i], b = bboxes[j];
+      const ox = Math.min(a.maxX,b.maxX) - Math.max(a.minX,b.minX);
+      const oy = Math.min(a.maxY,b.maxY) - Math.max(a.minY,b.minY);
+      if(ox <= 0 || oy <= 0) continue;
+      const overlapArea = ox*oy;
+      const areaA = a.width*a.height, areaB = b.width*b.height;
+      if(areaA <= 0 || areaB <= 0) continue;
+      const fracOfA = overlapArea/areaA;
+      const fracOfB = overlapArea/areaB;
+      if(Math.min(fracOfA, fracOfB) > IDENTICAL_OVERLAP_THRESHOLD){
+        (overlapsOf[parts[i].id] = overlapsOf[parts[i].id] || []).push(parts[j]);
+        (overlapsOf[parts[j].id] = overlapsOf[parts[j].id] || []).push(parts[i]);
+      }
+    }
+  }
+  return overlapsOf;
 }
 
 // ============================================================
@@ -1252,6 +1288,7 @@ function selectFile(id){
   infoPanel.style.display = 'flex';
   renderInfo(entry.program);
   renderAuditSection(entry);
+  renderLabelSection(entry);
   buildViewer(entry.program);
 }
 
@@ -1359,6 +1396,58 @@ function downloadText(text, filename){
 
 function isAuditSupported(program){
   return !!program && (program.format === 'gcode' || program.format === 'esagv');
+}
+
+// ============================================================
+// NESTING LABEL EXPORT (xcs only) — finds every SetNestingPartLabel(...) call
+// and comments it out so the controller skips auto-labeling, without touching
+// anything else in the file. Original entry.text is never mutated.
+// ============================================================
+const labelHeaderEl = document.getElementById('labelHeader');
+const labelSectionEl = document.getElementById('labelSectionEl');
+
+function findNestingLabelLines(text){
+  const lines = text.split(/\r\n|\r|\n/);
+  const out = [];
+  lines.forEach((line, i)=>{
+    if(/^\s*SetNestingPartLabel\s*\(/i.test(line)) out.push(i+1);
+  });
+  return out;
+}
+
+function renderLabelSection(entry){
+  const program = entry.program;
+  if(program.format !== 'xcs'){
+    labelHeaderEl.style.display = 'none';
+    labelSectionEl.style.display = 'none';
+    labelSectionEl.innerHTML = '';
+    return;
+  }
+  const lineNos = findNestingLabelLines(entry.text);
+  labelHeaderEl.style.display = '';
+  labelSectionEl.style.display = '';
+  labelSectionEl.innerHTML = '';
+  if(!lineNos.length){
+    labelSectionEl.innerHTML = '<div class="note">No SetNestingPartLabel calls found in this file.</div>';
+    return;
+  }
+  const btn = document.createElement('button');
+  btn.textContent = `Comment out ${lineNos.length} label line${lineNos.length===1?'':'s'} & download`;
+  btn.addEventListener('click', ()=> exportWithLabelsCommented(entry, lineNos));
+  const note = document.createElement('div');
+  note.className = 'note';
+  note.textContent = `Adds "//" to the start of line${lineNos.length===1?'':'s'} ${lineNos.join(', ')} so the controller skips auto-labeling. Downloads a new copy — this loaded file is left untouched.`;
+  labelSectionEl.appendChild(btn);
+  labelSectionEl.appendChild(note);
+}
+
+function exportWithLabelsCommented(entry, lineNos){
+  const text = entry.text;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r\n|\r|\n/);
+  const lineSet = new Set(lineNos);
+  const out = lines.map((line, idx)=> lineSet.has(idx+1) ? ('//' + line) : line);
+  downloadText(out.join(eol), entry.name.replace(/(\.[^.]+)$/, '_nolabels$1'));
 }
 
 function ensureAuditIssues(entry){
@@ -1592,17 +1681,25 @@ function renderPartsList(program){
     }
   });
 
+  const overlapsOf = computeStackedPartInfo(program);
+
   program.parts.forEach(part=>{
     const ops = opsByPart[part.id] || [];
     const wrapper = document.createElement('div');
 
     const pb = partBBox(part);
+    const stackedWith = overlapsOf[part.id];
     const header = document.createElement('div');
-    header.className = 'toolItem partHeader';
-    header.innerHTML = `<div class="tname">${escapeHtml(partLabel(part))}</div><div class="tmeta">${escapeHtml(part.id)} &middot; ${ops.length} ops</div><div class="tmeta">${mmIn(pb.width)} × ${mmIn(pb.height)}</div>`;
+    header.className = 'toolItem partHeader' + (stackedWith ? ' stacked' : '');
+    header.dataset.partId = part.id;
+    const alertIcon = stackedWith
+      ? `<span class="fileAlertIcon severe" data-tooltip="${escapeHtml('Overlaps with ' + stackedWith.map(partLabel).join(', ') + ' — check for duplicate/stacked part placement.')}">&#9888;</span>`
+      : '';
+    header.innerHTML = `<div class="tname">${escapeHtml(partLabel(part))}${alertIcon}</div><div class="tmeta">${escapeHtml(part.id)} &middot; ${ops.length} ops</div><div class="tmeta">${mmIn(pb.width)} × ${mmIn(pb.height)}</div>`;
 
     const opsWrap = document.createElement('div');
     opsWrap.className = 'partOps';
+    opsWrap.dataset.partId = part.id;
     ops.forEach(mv=>{
       const opDiv = document.createElement('div');
       opDiv.className = 'toolItem opItem';
@@ -1612,12 +1709,18 @@ function renderPartsList(program){
       opsWrap.appendChild(opDiv);
     });
 
-    header.addEventListener('click', ()=>{
+    header.addEventListener('click', e=>{
+      if(e.target.classList.contains('fileAlertIcon')) return;
       const willOpen = opsWrap.style.display !== 'block';
-      opsWrap.style.display = willOpen ? 'block' : 'none';
-      selectPart(willOpen ? part.id : null);
-      if(willOpen) header.classList.add('active');
+      setActivePart(willOpen ? part.id : null);
     });
+
+    const iconEl = header.querySelector('.fileAlertIcon');
+    if(iconEl){
+      iconEl.addEventListener('mouseenter', e=>{ e.stopPropagation(); showHoverTooltip(iconEl, iconEl.dataset.tooltip); });
+      iconEl.addEventListener('mouseleave', ()=> hideHoverTooltip());
+      iconEl.addEventListener('click', e=> e.stopPropagation());
+    }
 
     wrapper.appendChild(header);
     wrapper.appendChild(opsWrap);
@@ -1627,7 +1730,6 @@ function renderPartsList(program){
 
 function selectPart(id){
   state.selectedPartId = id;
-  document.querySelectorAll('.partHeader').forEach(h=>h.classList.remove('active'));
   if(id){
     const part = currentProgram.parts.find(p=>p.id===id);
     if(part){
@@ -1638,6 +1740,40 @@ function selectPart(id){
     }
   }
   fitToView();
+}
+
+// Keeps state, the viewport fit, and the parts-list DOM (active highlight +
+// expanded ops) all in sync regardless of whether the change came from a
+// click on a part header or from the prev/next toolbar buttons.
+function setActivePart(id){
+  selectPart(id);
+  document.querySelectorAll('.partHeader').forEach(h=>{
+    h.classList.toggle('active', !!id && h.dataset.partId === id);
+  });
+  document.querySelectorAll('.partOps').forEach(w=>{
+    w.style.display = (!!id && w.dataset.partId === id) ? 'block' : 'none';
+  });
+  if(id){
+    const activeHeader = toolListEl.querySelector(`.partHeader[data-part-id="${cssEscape(id)}"]`);
+    if(activeHeader) activeHeader.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function stepPart(delta){
+  const parts = currentProgram && currentProgram.parts;
+  if(!parts || !parts.length) return;
+  const idx = parts.findIndex(p=>p.id === state.selectedPartId);
+  let newIdx;
+  if(idx === -1){
+    newIdx = delta > 0 ? 0 : parts.length - 1;
+  } else {
+    newIdx = (idx + delta + parts.length) % parts.length;
+  }
+  setActivePart(parts[newIdx].id);
+}
+
+function cssEscape(s){
+  return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 
 // ============================================================
@@ -1679,6 +1815,7 @@ function buildViewer(program){
   viewerPanel.innerHTML = `
     <div id="toolbar">
       <button id="fitBtn">Fit to view</button>
+      ${program.parts.length ? `<button id="prevPartBtn" title="Previous part">&#9664; Part</button><button id="nextPartBtn" title="Next part">Part &#9654;</button>` : ''}
       <button id="layoutBtn"></button>
       ${toolbarLegendHtml(program)}
       <span id="zoomLabel">100%</span>
@@ -1704,7 +1841,11 @@ function buildViewer(program){
   resizeCanvas();
   fitToView();
 
-  document.getElementById('fitBtn').addEventListener('click', ()=>{ state.selectedPartId=null; document.querySelectorAll('.partHeader').forEach(h=>h.classList.remove('active')); fitToView(); });
+  document.getElementById('fitBtn').addEventListener('click', ()=> setActivePart(null));
+  const prevPartBtn = document.getElementById('prevPartBtn');
+  const nextPartBtn = document.getElementById('nextPartBtn');
+  if(prevPartBtn) prevPartBtn.addEventListener('click', ()=> stepPart(-1));
+  if(nextPartBtn) nextPartBtn.addEventListener('click', ()=> stepPart(1));
   document.getElementById('layoutBtn').addEventListener('click', toggleLayoutMode);
   const showRapidsEl = document.getElementById('showRapids');
   if(showRapidsEl) showRapidsEl.addEventListener('change', draw);
