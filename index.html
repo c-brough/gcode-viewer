@@ -33,12 +33,19 @@
   }
   #dropzone.drag{border-color:var(--accent); color:var(--accent); background:rgba(79,140,255,.08);}
   #fileList{flex:1 1 auto; overflow-y:auto; padding:0 8px 8px;}
-  .fileItem{padding:8px 10px; border-radius:6px; cursor:pointer; margin-bottom:4px; border:1px solid transparent;}
+  .fileItem{position:relative; padding:8px 26px 8px 10px; border-radius:6px; cursor:grab; margin-bottom:4px; border:1px solid transparent;}
   .fileItem:hover{background:var(--panel2);}
   .fileItem.active{background:rgba(79,140,255,.15); border-color:var(--accent);}
+  .fileItem.dragging{opacity:.4;}
+  .fileItem.drag-over{outline:2px dashed var(--accent); outline-offset:-2px;}
   .fileItem .name{font-weight:600; font-size:12px; word-break:break-all;}
   .fileItem .meta{color:var(--dim); font-size:11px; margin-top:3px;}
   .fileItem .err{color:var(--danger); font-size:11px; margin-top:3px;}
+  .fileDeleteBtn{
+    position:absolute; top:6px; right:6px; background:none; border:none; color:var(--dim);
+    font-size:12px; cursor:pointer; padding:3px 6px; border-radius:4px; line-height:1;
+  }
+  .fileDeleteBtn:hover{color:#ff6b6b; background:rgba(255,107,107,.14);}
   .fileAlertIcon{display:inline-flex; align-items:center; justify-content:center; margin-left:6px; font-size:11px;
     color:#ffb454; cursor:help; vertical-align:middle;}
   .fileAlertIcon.severe{color:#ff6b6b;}
@@ -94,6 +101,7 @@
   #resumeSectionEl select{width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px; font-size:12px; margin-bottom:8px;}
   #resumeSectionEl button{width:100%;}
   .codeLine.removed{text-decoration:line-through; color:#ff8080; background:rgba(255,80,80,.08);}
+  .codeLine.flash{background:rgba(79,140,255,.35); transition:background 1s ease-out;}
 
   #helpBtn{
     margin-left:auto; background:var(--panel2); border:1px solid var(--border); color:var(--text);
@@ -1344,11 +1352,15 @@ function parseXilog(text){
 // ============================================================
 // UI: file list
 // ============================================================
+let dragFileId = null;
+
 function renderFileList(){
   fileListEl.innerHTML = '';
   state.files.forEach(entry=>{
     const div = document.createElement('div');
     div.className = 'fileItem' + (entry.id === state.activeFileId ? ' active' : '');
+    div.draggable = true;
+    div.dataset.fileId = entry.id;
     const sizeKb = (entry.size/1024).toFixed(1);
     let meta;
     if(entry.error) meta = `<span style="color:var(--danger)">error</span> &middot; ${sizeKb} KB`;
@@ -1359,7 +1371,8 @@ function renderFileList(){
     const nameRow = hasAuditIssues
       ? `<div class="name">${escapeHtml(entry.name)}<span class="fileAlertIcon${hasSevere?' severe':''}" data-tooltip="${escapeHtml(auditSummaryText(entry))}">&#9888;</span></div>`
       : `<div class="name">${escapeHtml(entry.name)}</div>`;
-    div.innerHTML = nameRow + `<div class="meta">${meta}</div>` +
+    div.innerHTML = `<button type="button" class="fileDeleteBtn" title="Remove file">&#10005;</button>` +
+      nameRow + `<div class="meta">${meta}</div>` +
       (entry.error ? `<div class="err">${escapeHtml(entry.error)}</div>` : '');
     div.addEventListener('click', ()=>{ if(entry.program) selectFile(entry.id); });
     const iconEl = div.querySelector('.fileAlertIcon');
@@ -1368,8 +1381,86 @@ function renderFileList(){
       iconEl.addEventListener('mouseleave', ()=> hideHoverTooltip());
       iconEl.addEventListener('click', e=> e.stopPropagation());
     }
+    const deleteBtn = div.querySelector('.fileDeleteBtn');
+    deleteBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      deleteFile(entry.id);
+    });
+
+    // ---- Drag-and-drop reordering ----
+    div.addEventListener('dragstart', e=>{
+      dragFileId = entry.id;
+      div.classList.add('dragging');
+      if(e.dataTransfer){
+        e.dataTransfer.effectAllowed = 'move';
+        try{ e.dataTransfer.setData('text/plain', entry.id); }catch(err){}
+      }
+    });
+    div.addEventListener('dragend', ()=>{
+      div.classList.remove('dragging');
+      document.querySelectorAll('.fileItem.drag-over').forEach(el=>el.classList.remove('drag-over'));
+      dragFileId = null;
+    });
+    div.addEventListener('dragover', e=>{
+      if(!dragFileId || dragFileId === entry.id) return;
+      e.preventDefault();
+      if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      div.classList.add('drag-over');
+    });
+    div.addEventListener('dragleave', ()=> div.classList.remove('drag-over'));
+    div.addEventListener('drop', e=>{
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      if(!dragFileId || dragFileId === entry.id) return;
+      reorderFiles(dragFileId, entry.id);
+      dragFileId = null;
+    });
+
     fileListEl.appendChild(div);
   });
+}
+
+function reorderFiles(sourceId, targetId){
+  const fromIdx = state.files.findIndex(f=>f.id===sourceId);
+  const toIdx = state.files.findIndex(f=>f.id===targetId);
+  if(fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+  const [moved] = state.files.splice(fromIdx, 1);
+  state.files.splice(toIdx, 0, moved);
+  renderFileList();
+}
+
+function deleteFile(id){
+  const idx = state.files.findIndex(f=>f.id===id);
+  if(idx === -1) return;
+  const wasActive = state.activeFileId === id;
+  state.files.splice(idx, 1);
+  if(!wasActive){
+    renderFileList();
+    return;
+  }
+  state.activeFileId = null;
+  state.selectedPartId = null;
+  const next = state.files[Math.min(idx, state.files.length-1)];
+  if(next && next.program){
+    selectFile(next.id); // re-renders the file list itself
+  } else {
+    infoPanel.style.display = 'none';
+    showEmptyViewer();
+    renderFileList();
+  }
+}
+
+function showEmptyViewer(){
+  currentProgram = null;
+  stopPlay();
+  viewerPanel.innerHTML = `
+    <div id="empty">
+      <div>
+        <div class="big">No program loaded yet</div>
+        <div>Drop one or more program files on the left to preview a toolpath.</div>
+      </div>
+    </div>
+  `;
 }
 
 // ---------- Shared hover tooltip (position:fixed so it escapes scrollable panels) ----------
@@ -1871,6 +1962,14 @@ function setActivePart(id){
   if(id){
     const activeHeader = toolListEl.querySelector(`.partHeader[data-part-id="${cssEscape(id)}"]`);
     if(activeHeader) activeHeader.scrollIntoView({ block: 'nearest' });
+    // Scroll the code panel to this part's line WITHOUT touching the scrub
+    // position — jumpToLine() would move the scrub cursor and truncate the
+    // drawn path to "everything up to here", which would hide the very part's
+    // operations we just zoomed into (they come right after this line). We
+    // just want the code view to follow the selection, same as the viewport
+    // fit above, while keeping the whole-sheet dim/highlight rendering intact.
+    const part = currentProgram.parts.find(p=>p.id===id);
+    if(part && part.lineNo != null) scrollCodeToLine(part.lineNo);
   }
 }
 
@@ -2440,6 +2539,19 @@ function renderCodePanel(program){
   codePanel.innerHTML = '';
   codePanel.appendChild(frag);
   markRemovedLines(activeAuditEntry());
+}
+
+// Scrolls the code panel to a specific line and briefly flashes it, without
+// moving the scrub cursor (unlike jumpToLine) — used when selecting a whole
+// part, where we want the full toolpath still drawn (dimmed/highlighted by
+// part), not truncated to "everything up to here".
+function scrollCodeToLine(lineNo){
+  const el = document.getElementById('code-line-' + lineNo);
+  if(!el) return;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  document.querySelectorAll('.codeLine.flash').forEach(o=> o.classList.remove('flash'));
+  el.classList.add('flash');
+  setTimeout(()=> el.classList.remove('flash'), 1200);
 }
 
 function jumpToLine(lineNo){
