@@ -95,6 +95,35 @@
   #resumeSectionEl button{width:100%;}
   .codeLine.removed{text-decoration:line-through; color:#ff8080; background:rgba(255,80,80,.08);}
 
+  #helpBtn{
+    margin-left:auto; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px; flex:0 0 auto;
+  }
+  #helpBtn:hover{border-color:var(--accent);}
+  .modalOverlay{position:fixed; inset:0; background:rgba(6,9,16,.65); display:flex; align-items:center; justify-content:center; z-index:2000;}
+  .modalOverlay.hidden{display:none;}
+  .modalCard{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    width:min(720px, 92vw); max-height:85vh; display:flex; flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .modalCard .modalHeaderRow{display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); flex:0 0 auto;}
+  .modalCard .modalHeaderRow h2{margin:0; font-size:15px;}
+  .modalCard .modalCloseBtn{background:none; border:none; color:var(--dim); font-size:20px; cursor:pointer; line-height:1; padding:2px 6px;}
+  .modalCard .modalCloseBtn:hover{color:var(--text);}
+  .modalBody{padding:8px 20px 20px; overflow-y:auto; font-size:12.5px; line-height:1.65;}
+  .modalBody h3{font-size:13.5px; margin:22px 0 8px; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px;}
+  .modalBody h3:first-child{margin-top:8px;}
+  .modalBody h4{font-size:12.5px; margin:16px 0 6px; color:var(--accent2);}
+  .modalBody p{margin:8px 0; color:var(--text);}
+  .modalBody ul, .modalBody ol{margin:8px 0; padding-left:22px;}
+  .modalBody li{margin:5px 0;}
+  .modalBody code{background:var(--panel2); border:1px solid var(--border); border-radius:4px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11.5px;}
+  .modalBody table{border-collapse:collapse; width:100%; margin:10px 0; font-size:11.5px;}
+  .modalBody th, .modalBody td{border:1px solid var(--border); padding:6px 8px; text-align:left; vertical-align:top;}
+  .modalBody th{background:var(--panel2); color:var(--dim); font-weight:600;}
+  .modalBody strong{color:var(--text);}
+
   #toolbar{display:flex; align-items:center; gap:14px; padding:8px 14px; border-bottom:1px solid var(--border); background:var(--panel); flex-wrap:wrap;}
   #toolbar label{display:flex; align-items:center; gap:5px; color:var(--dim); font-size:12px; cursor:pointer;}
   #toolbar button{
@@ -146,7 +175,86 @@
 <header>
   <h1>CNC Program Viewer</h1>
   <span class="sub">Drop Fanuc .anc/.nc/.tap/.gcode files, Biesse/Maestro .xcs scripts, or SCM Xilog+ .xxl programs &mdash; parsed and rendered entirely in your browser</span>
+  <button id="helpBtn" title="How to use this tool">&#63; Help</button>
 </header>
+
+<div id="helpModal" class="modalOverlay hidden">
+  <div class="modalCard">
+    <div class="modalHeaderRow">
+      <h2>CNC Program Viewer &mdash; Help</h2>
+      <button id="helpCloseBtn" class="modalCloseBtn" title="Close">&#10005;</button>
+    </div>
+    <div class="modalBody">
+      <p>A single-file, browser-based viewer for CNC toolpath programs. Drop in a file and it parses, renders, and lets you step through the program &mdash; no install, no server, nothing leaves your browser.</p>
+
+      <h3>Supported formats</h3>
+      <table>
+        <thead><tr><th>Format</th><th>Typical extensions</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Fanuc-style G-code</td><td><code>.anc</code>, <code>.nc</code>, <code>.tap</code>, <code>.gcode</code>, <code>.txt</code>, <code>.ncf</code>, <code>.cnc</code></td><td>G0/G1/G2/G3, R- and I/J-based arcs, G41/G42 cutter compensation, tool changes</td></tr>
+          <tr><td>Biesse / Maestro</td><td><code>.xcs</code></td><td>Scripted CAM format (<code>CreatePolyline</code>, <code>CreateRoughFinish</code>, <code>CreateDrill</code>, <code>CreatePart</code>, etc.)</td></tr>
+          <tr><td>SCM Xilog+</td><td><code>.xxl</code></td><td>SCM router post format</td></tr>
+          <tr><td>ISO-ESAGV</td><td><code>.i00</code></td><td>Same G-code vocabulary as Fanuc, but with absolute (not relative) I/J arc centers</td></tr>
+        </tbody>
+      </table>
+      <p>The format is auto-detected from file contents &mdash; you don't need to pick it manually.</p>
+
+      <h3>Getting started</h3>
+      <ol>
+        <li>Open <code>gcode-viewer.html</code> in any modern browser (double-click it, or host it somewhere and open the URL).</li>
+        <li>Drag one or more program files onto the drop zone, or click it to browse. You can load several files at once and switch between them in the left-hand file list.</li>
+        <li>The first successfully-parsed file is opened automatically.</li>
+      </ol>
+
+      <h3>Layout</h3>
+      <ul>
+        <li><strong>Files panel (far left)</strong> &mdash; every loaded file, with a size/format badge. Files with audit problems show a warning icon &mdash; hover it for a summary.</li>
+        <li><strong>Info panel</strong> &mdash; job/panel details (material, panel size, origin), program stats (counts, ranges), and either a <strong>Tool changes</strong> list (G-code/Xilog/ESAGV) or a <strong>Parts</strong> list (xcs).</li>
+        <li><strong>Viewer</strong> &mdash; the toolpath itself, plus a synced code panel showing the raw file.</li>
+      </ul>
+
+      <h3>Viewing the toolpath</h3>
+      <ul>
+        <li><strong>Fit to view</strong> re-centers and re-scales the drawing.</li>
+        <li><strong>Scrub slider + Play</strong> animate the program move-by-move; the code panel highlights the current line and scrolls to follow.</li>
+        <li>Click anywhere in the <strong>code panel</strong> to jump the viewer to that line.</li>
+        <li><strong>Code panel: Bottom / Right</strong> toggles whether the code panel docks under or beside the canvas; drag the divider between them to resize.</li>
+        <li><strong>Show rapids</strong> toggles whether rapid (non-cutting) travel moves are drawn.</li>
+        <li>Mouse wheel to zoom, click-drag to pan.</li>
+      </ul>
+
+      <h4>Parts list (xcs files)</h4>
+      <p>For Maestro <code>.xcs</code> files, the secondary panel lists every part on the sheet instead of tool changes:</p>
+      <ul>
+        <li>Click a part to highlight it and zoom the viewer to just that part; click again to collapse.</li>
+        <li><strong>&#9664; Part / Part &#9654;</strong> buttons in the toolbar step through parts one at a time (wraps around at either end) &mdash; handy for reviewing a whole nest without hunting through the list.</li>
+        <li>Expand a part to see its individual operations (drills, routing passes) and jump straight to the line that produces each one.</li>
+        <li><strong>Stacked-part alert:</strong> if two parts occupy essentially the same footprint (&ge;95% of each other's bounding-box area) &mdash; almost always a duplicate or mis-nested part rather than normal edge-to-edge nesting &mdash; both are highlighted in red with a warning icon. Hover the icon to see which part(s) it overlaps.</li>
+      </ul>
+
+      <h3>Corner &amp; compensation audit (G-code / ISO-ESAGV)</h3>
+      <p>For Fanuc-style and ISO-ESAGV files, the info panel includes an audit of geometry that's known to break cutter-radius compensation (G41/G42) mid-cut:</p>
+      <ul>
+        <li><strong>Colinear runs</strong> &mdash; a string of points that are effectively one straight line, split across multiple G-code blocks. These collapse safely into a single segment with no path change, and are marked <strong>auto-fix</strong>.</li>
+        <li><strong>Short-sharp segments</strong> &mdash; a segment shorter than the currently-active tool radius sitting at a real corner. These can't be resolved automatically and are marked <strong>review</strong> for you to inspect manually.</li>
+      </ul>
+      <p>Each finding is its own card. You can:</p>
+      <ul>
+        <li><strong>Apply this fix</strong> on an individual card, or check several and use <strong>Apply selected</strong> (there's also a <strong>Check all</strong> button).</li>
+        <li>Once at least one fix has been applied, a <strong>Download fixed file</strong> button appears &mdash; it downloads a new file with only the confirmed lines removed. The originally-loaded file is never modified; applied fixes are shown as struck-through lines in the code panel so you can compare before/after.</li>
+      </ul>
+
+      <h4>Resume export</h4>
+      <p>Also under the audit section: pick a tool change and an operation from the dropdowns, then <strong>Export from selected operation</strong> to download a version of the file that replays that tool's setup (tool change, spindle start, length offset) and then jumps straight to the chosen operation &mdash; for restarting a job partway through a sheet without re-running everything from the top. Nothing is recalculated; only existing lines are kept or skipped. Always review the exported file before running it on a machine.</p>
+
+      <h3>Nesting-label export (xcs only)</h3>
+      <p>Maestro files place a <code>SetNestingPartLabel(...)</code> call per part to auto-print a label. If you need the controller to skip that (e.g. pre-printed labels, or a different labeling workflow), the <strong>Nesting labels</strong> section provides a one-click <strong>Comment out N label lines &amp; download</strong> button. It prefixes every <code>SetNestingPartLabel</code> line with <code>//</code> and downloads a new file &mdash; again, without touching the loaded original.</p>
+
+      <h3>A note on safety</h3>
+      <p>This tool only reads and displays files, and any "fix" or "export" action produces a <strong>new</strong> downloaded file &mdash; it never overwrites what you loaded. That said, this is machine-facing G-code: always review a modified/exported file yourself before sending it to a controller.</p>
+    </div>
+  </div>
+</div>
 
 <div id="layout">
   <div id="filesPanel">
@@ -211,6 +319,13 @@ const headerBlock = document.getElementById('headerBlock');
 const statsBlock = document.getElementById('statsBlock');
 const toolListEl = document.getElementById('toolListEl');
 const viewerPanel = document.getElementById('viewerPanel');
+
+// ---------- Help modal wiring ----------
+const helpModal = document.getElementById('helpModal');
+document.getElementById('helpBtn').addEventListener('click', ()=> helpModal.classList.remove('hidden'));
+document.getElementById('helpCloseBtn').addEventListener('click', ()=> helpModal.classList.add('hidden'));
+helpModal.addEventListener('click', e=>{ if(e.target === helpModal) helpModal.classList.add('hidden'); });
+window.addEventListener('keydown', e=>{ if(e.key === 'Escape' && !helpModal.classList.contains('hidden')) helpModal.classList.add('hidden'); });
 
 // ---------- Drag & drop wiring ----------
 ['dragenter','dragover'].forEach(evt=>{
