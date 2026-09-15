@@ -161,12 +161,24 @@
   #resizeHandle:hover, #resizeHandle.active{background:var(--accent);}
   #viewerBody.mode-bottom #resizeHandle{height:6px; width:100%; cursor:ns-resize;}
   #viewerBody.mode-right #resizeHandle{width:6px; height:100%; cursor:ew-resize;}
-  #viewerBody.mode-bottom #codePanel{width:100%;}
-  #viewerBody.mode-right #codePanel{height:100%;}
+  #viewerBody.mode-bottom #codePanelWrap{width:100%;}
+  #viewerBody.mode-right #codePanelWrap{height:100%;}
 
-  #codePanel{flex:0 0 auto; border-top:1px solid var(--border); overflow-y:auto; background:#0c111c; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11.5px;}
-  #viewerBody.mode-right #codePanel{border-top:none; border-left:1px solid var(--border);}
+  #codePanelWrap{flex:0 0 auto; display:flex; flex-direction:column; min-height:0; min-width:0; border-top:1px solid var(--border); background:#0c111c;}
+  #viewerBody.mode-right #codePanelWrap{border-top:none; border-left:1px solid var(--border);}
+  #codePanel{flex:1 1 auto; overflow-y:auto; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11.5px;}
+
+  #codeSearchBar{display:flex; align-items:center; gap:6px; padding:6px 8px; border-bottom:1px solid var(--border); background:var(--panel); flex:0 0 auto;}
+  #codeSearchBar input{flex:1 1 auto; min-width:0; background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:4px 8px; font-size:11.5px;}
+  #codeSearchBar input:focus{outline:none; border-color:var(--accent);}
+  #codeSearchCount{color:var(--dim); font-size:10.5px; white-space:nowrap; min-width:34px; text-align:center; flex:0 0 auto;}
+  #codeSearchBar button{background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:3px 7px; font-size:10.5px; cursor:pointer; line-height:1; flex:0 0 auto;}
+  #codeSearchBar button:hover{border-color:var(--accent);}
+  #codeSearchBar button:disabled{opacity:.4; cursor:default;}
+  #codeSearchBar button:disabled:hover{border-color:var(--border);}
   .codeLine{display:flex; padding:1px 12px; white-space:pre; cursor:pointer;}
+  .codeLine.searchMatch{background:rgba(255,180,84,.16);}
+  .codeLine.searchActive{background:rgba(255,180,84,.42) !important; outline:1px solid #ffb454; outline-offset:-1px;}
   .codeLine .ln{color:var(--dim); width:44px; flex:0 0 auto; text-align:right; margin-right:10px; user-select:none;}
   .codeLine.current{background:rgba(79,140,255,.18);}
   .codeLine.past{opacity:.45;}
@@ -216,7 +228,7 @@
 
       <h3>Layout</h3>
       <ul>
-        <li><strong>Files panel (far left)</strong> &mdash; every loaded file, with a size/format badge. Files with audit problems show a warning icon &mdash; hover it for a summary.</li>
+        <li><strong>Files panel (far left)</strong> &mdash; every loaded file, with a size/format badge. Files with audit problems show a warning icon &mdash; hover it for a summary. Drag a file to reorder the list, or click its &#10005; to remove it.</li>
         <li><strong>Info panel</strong> &mdash; job/panel details (material, panel size, origin), program stats (counts, ranges), and either a <strong>Tool changes</strong> list (G-code/Xilog/ESAGV) or a <strong>Parts</strong> list (xcs).</li>
         <li><strong>Viewer</strong> &mdash; the toolpath itself, plus a synced code panel showing the raw file.</li>
       </ul>
@@ -231,10 +243,13 @@
         <li>Mouse wheel to zoom, click-drag to pan.</li>
       </ul>
 
+      <h4>Searching the code panel</h4>
+      <p>The search bar docked above the code panel highlights every line containing your text as you type (case-insensitive). Use the &#9650;/&#9660; buttons &mdash; or <code>Enter</code> / <code>Shift+Enter</code> right from the input &mdash; to step to the next or previous match, with a counter showing your position (e.g. <code>3 / 12</code>). <code>Escape</code> or the &#10005; button clears the search.</p>
+
       <h4>Parts list (xcs files)</h4>
       <p>For Maestro <code>.xcs</code> files, the secondary panel lists every part on the sheet instead of tool changes:</p>
       <ul>
-        <li>Click a part to highlight it and zoom the viewer to just that part; click again to collapse.</li>
+        <li>Click a part to highlight it, zoom the viewer to just that part, and jump the code panel to that part's line.</li>
         <li><strong>&#9664; Part / Part &#9654;</strong> buttons in the toolbar step through parts one at a time (wraps around at either end) &mdash; handy for reviewing a whole nest without hunting through the list.</li>
         <li>Expand a part to see its individual operations (drills, routing passes) and jump straight to the line that produces each one.</li>
         <li><strong>Stacked-part alert:</strong> if two parts occupy essentially the same footprint (&ge;95% of each other's bounding-box area) &mdash; almost always a duplicate or mis-nested part rather than normal edge-to-edge nesting &mdash; both are highlighted in red with a warning icon. Hover the icon to see which part(s) it overlaps.</li>
@@ -2040,7 +2055,16 @@ function buildViewer(program){
         <div id="hoverInfo"></div>
       </div>
       <div id="resizeHandle"></div>
-      <div id="codePanel"></div>
+      <div id="codePanelWrap">
+        <div id="codeSearchBar">
+          <input type="text" id="codeSearchInput" placeholder="Search code&hellip;" autocomplete="off" spellcheck="false" />
+          <span id="codeSearchCount"></span>
+          <button type="button" id="codeSearchPrevBtn" title="Previous match (Shift+Enter)" disabled>&#9650;</button>
+          <button type="button" id="codeSearchNextBtn" title="Next match (Enter)" disabled>&#9660;</button>
+          <button type="button" id="codeSearchClearBtn" title="Clear search">&#10005;</button>
+        </div>
+        <div id="codePanel"></div>
+      </div>
     </div>
     <div id="scrubRow">
       <button id="playBtn">&#9654; Play</button>
@@ -2076,6 +2100,7 @@ function buildViewer(program){
   wirePanZoom();
   wireResizeHandle();
   renderCodePanel(program);
+  wireCodeSearch();
   updateScrubLabel();
   draw();
   highlightCode();
@@ -2100,16 +2125,16 @@ function saveLayoutPrefs(){
 }
 function applyLayoutMode(){
   const body = document.getElementById('viewerBody');
-  const codePanel = document.getElementById('codePanel');
+  const codePanelWrap = document.getElementById('codePanelWrap');
   const layoutBtn = document.getElementById('layoutBtn');
   body.className = 'mode-' + state.codePanelMode;
   if(state.codePanelMode === 'bottom'){
-    codePanel.style.height = state.codePanelSize + 'px';
-    codePanel.style.width = '';
+    codePanelWrap.style.height = state.codePanelSize + 'px';
+    codePanelWrap.style.width = '';
     layoutBtn.textContent = 'Code panel: Bottom (move right)';
   } else {
-    codePanel.style.width = state.codePanelSize + 'px';
-    codePanel.style.height = '';
+    codePanelWrap.style.width = state.codePanelSize + 'px';
+    codePanelWrap.style.height = '';
     layoutBtn.textContent = 'Code panel: Right (move bottom)';
   }
 }
@@ -2124,7 +2149,7 @@ function toggleLayoutMode(){
 function wireResizeHandle(){
   const handle = document.getElementById('resizeHandle');
   const body = document.getElementById('viewerBody');
-  const codePanel = document.getElementById('codePanel');
+  const codePanelWrap = document.getElementById('codePanelWrap');
   let dragging = false;
   handle.addEventListener('mousedown', e=>{ dragging = true; handle.classList.add('active'); e.preventDefault(); });
   window.addEventListener('mousemove', e=>{
@@ -2133,12 +2158,12 @@ function wireResizeHandle(){
     if(state.codePanelMode === 'bottom'){
       let h = rect.bottom - e.clientY;
       h = Math.max(80, Math.min(rect.height - 120, h));
-      codePanel.style.height = h + 'px';
+      codePanelWrap.style.height = h + 'px';
       state.codePanelSize = h;
     } else {
       let w = rect.right - e.clientX;
       w = Math.max(180, Math.min(rect.width - 220, w));
-      codePanel.style.width = w + 'px';
+      codePanelWrap.style.width = w + 'px';
       state.codePanelSize = w;
     }
     resizeCanvas();
@@ -2552,6 +2577,98 @@ function scrollCodeToLine(lineNo){
   document.querySelectorAll('.codeLine.flash').forEach(o=> o.classList.remove('flash'));
   el.classList.add('flash');
   setTimeout(()=> el.classList.remove('flash'), 1200);
+}
+
+// ---------- Live code search ----------
+let searchMatches = [];
+let searchActiveIndex = -1;
+
+function wireCodeSearch(){
+  searchMatches = [];
+  searchActiveIndex = -1;
+  const input = document.getElementById('codeSearchInput');
+  const prevBtn = document.getElementById('codeSearchPrevBtn');
+  const nextBtn = document.getElementById('codeSearchNextBtn');
+  const clearBtn = document.getElementById('codeSearchClearBtn');
+
+  input.addEventListener('input', ()=> performCodeSearch(input.value));
+  input.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      goToSearchMatch(e.shiftKey ? -1 : 1);
+    } else if(e.key === 'Escape'){
+      input.value = '';
+      clearCodeSearch();
+    }
+  });
+  prevBtn.addEventListener('click', ()=> goToSearchMatch(-1));
+  nextBtn.addEventListener('click', ()=> goToSearchMatch(1));
+  clearBtn.addEventListener('click', ()=>{ input.value = ''; clearCodeSearch(); input.focus(); });
+}
+
+function performCodeSearch(query){
+  document.querySelectorAll('.codeLine.searchMatch').forEach(el=> el.classList.remove('searchMatch'));
+  document.querySelectorAll('.codeLine.searchActive').forEach(el=> el.classList.remove('searchActive'));
+  searchMatches = [];
+  searchActiveIndex = -1;
+  const countEl = document.getElementById('codeSearchCount');
+  const prevBtn = document.getElementById('codeSearchPrevBtn');
+  const nextBtn = document.getElementById('codeSearchNextBtn');
+  const q = query.trim().toLowerCase();
+  if(!q || !currentProgram){
+    if(countEl) countEl.textContent = '';
+    if(prevBtn) prevBtn.disabled = true;
+    if(nextBtn) nextBtn.disabled = true;
+    return;
+  }
+  currentProgram.lines.forEach((line, i)=>{
+    if(line.toLowerCase().includes(q)) searchMatches.push(i+1);
+  });
+  searchMatches.forEach(lineNo=>{
+    const el = document.getElementById('code-line-'+lineNo);
+    if(el) el.classList.add('searchMatch');
+  });
+  if(searchMatches.length){
+    if(prevBtn) prevBtn.disabled = false;
+    if(nextBtn) nextBtn.disabled = false;
+    searchActiveIndex = 0;
+    setActiveSearchMatch();
+  } else {
+    if(countEl) countEl.textContent = '0 / 0';
+    if(prevBtn) prevBtn.disabled = true;
+    if(nextBtn) nextBtn.disabled = true;
+  }
+}
+
+function goToSearchMatch(delta){
+  if(!searchMatches.length) return;
+  searchActiveIndex = (searchActiveIndex + delta + searchMatches.length) % searchMatches.length;
+  setActiveSearchMatch();
+}
+
+function setActiveSearchMatch(){
+  document.querySelectorAll('.codeLine.searchActive').forEach(el=> el.classList.remove('searchActive'));
+  const lineNo = searchMatches[searchActiveIndex];
+  const el = document.getElementById('code-line-'+lineNo);
+  if(el){
+    el.classList.add('searchActive');
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  const countEl = document.getElementById('codeSearchCount');
+  if(countEl) countEl.textContent = (searchActiveIndex+1) + ' / ' + searchMatches.length;
+}
+
+function clearCodeSearch(){
+  document.querySelectorAll('.codeLine.searchMatch').forEach(el=> el.classList.remove('searchMatch'));
+  document.querySelectorAll('.codeLine.searchActive').forEach(el=> el.classList.remove('searchActive'));
+  searchMatches = [];
+  searchActiveIndex = -1;
+  const countEl = document.getElementById('codeSearchCount');
+  if(countEl) countEl.textContent = '';
+  const prevBtn = document.getElementById('codeSearchPrevBtn');
+  const nextBtn = document.getElementById('codeSearchNextBtn');
+  if(prevBtn) prevBtn.disabled = true;
+  if(nextBtn) nextBtn.disabled = true;
 }
 
 function jumpToLine(lineNo){

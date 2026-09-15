@@ -2,7 +2,7 @@
 
 A single-file, browser-based viewer for CNC toolpath programs. Drop in a file and it parses, renders, and lets you step through the program — no install, no server, nothing leaves your browser.
 
-**Live version:** open [`gcode-viewer.html`](./gcode-viewer.html) directly, or use the hosted copy if you've set one up (e.g. via GitHub Pages).
+**Live version:** open [`gcode-viewer.html`](./gcode-viewer.html) directly, or use the hosted copy if you've set one up (e.g. via GitHub Pages). A **Help** button in the header opens this same overview as a pop-up card inside the tool.
 
 ## Supported formats
 
@@ -23,7 +23,7 @@ The format is auto-detected from file contents — you don't need to pick it man
 
 ## Layout
 
-- **Files panel (far left)** — every loaded file, with a size/format badge. Files with audit problems show a warning icon (see [Corner & compensation audit](#corner--compensation-audit-gcode--iso-esagv) below) — hover it for a summary.
+- **Files panel (far left)** — every loaded file, with a size/format badge. Files with audit problems show a warning icon (see [Corner & compensation audit](#corner--compensation-audit-gcode--iso-esagv) below) — hover it for a summary. Drag a file to reorder the list, or click its **×** to remove it.
 - **Info panel** — job/panel details (material, panel size, origin), program stats (counts, ranges), and either a **Tool changes** list (G-code/Xilog/ESAGV) or a **Parts** list (xcs).
 - **Viewer** — the toolpath itself, plus a synced code panel showing the raw file.
 
@@ -36,11 +36,15 @@ The format is auto-detected from file contents — you don't need to pick it man
 - **Show rapids** toggles whether rapid (non-cutting) travel moves are drawn.
 - Mouse wheel to zoom, click-drag to pan.
 
+### Searching the code panel
+
+The search bar docked above the code panel highlights every line containing your text as you type (case-insensitive). Use the ▲/▼ buttons — or `Enter` / `Shift+Enter` right from the input — to step to the next or previous match, with a counter showing your position (e.g. `3 / 12`). `Escape` or the **×** button clears the search.
+
 ### Parts list (xcs files)
 
 For Maestro `.xcs` files, the secondary panel lists every part on the sheet instead of tool changes:
 
-- Click a part to highlight it and zoom the viewer to just that part; click again to collapse.
+- Click a part to highlight it, zoom the viewer to just that part, and jump the code panel to that part's line; click again to collapse.
 - **◀ Part / Part ▶** buttons in the toolbar step through parts one at a time (wraps around at either end) — handy for reviewing a whole nest without hunting through the list.
 - Expand a part to see its individual operations (drills, routing passes) and jump straight to the line that produces each one.
 - **Stacked-part alert:** if two parts occupy essentially the same footprint (≥95% of each other's bounding-box area) — almost always a duplicate or mis-nested part rather than normal edge-to-edge nesting — both are highlighted in red with a warning icon. Hover the icon to see which part(s) it overlaps.
