@@ -101,7 +101,6 @@
   #resumeSectionEl select{width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px; font-size:12px; margin-bottom:8px;}
   #resumeSectionEl button{width:100%;}
   .codeLine.removed{text-decoration:line-through; color:#ff8080; background:rgba(255,80,80,.08);}
-  .codeLine.flash{background:rgba(79,140,255,.35); transition:background 1s ease-out;}
 
   #helpBtn{
     margin-left:auto; background:var(--panel2); border:1px solid var(--border); color:var(--text);
@@ -2566,17 +2565,19 @@ function renderCodePanel(program){
   markRemovedLines(activeAuditEntry());
 }
 
-// Scrolls the code panel to a specific line and briefly flashes it, without
-// moving the scrub cursor (unlike jumpToLine) — used when selecting a whole
-// part, where we want the full toolpath still drawn (dimmed/highlighted by
-// part), not truncated to "everything up to here".
+// Scrolls the code panel to a specific line and highlights it the same way
+// jumpToLine's "current line" highlight looks, WITHOUT moving the scrub
+// cursor — used when selecting a whole part, where we want the full toolpath
+// still drawn (dimmed/highlighted by part), not truncated to "everything up
+// to here". The highlight persists (just like the scrub-driven one does)
+// until something else re-highlights the code panel.
 function scrollCodeToLine(lineNo){
   const el = document.getElementById('code-line-' + lineNo);
   if(!el) return;
+  document.querySelectorAll('.codeLine.current').forEach(o=> o.classList.remove('current'));
+  el.classList.remove('past');
+  el.classList.add('current');
   el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  document.querySelectorAll('.codeLine.flash').forEach(o=> o.classList.remove('flash'));
-  el.classList.add('flash');
-  setTimeout(()=> el.classList.remove('flash'), 1200);
 }
 
 // ---------- Live code search ----------
